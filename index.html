@@ -116,7 +116,7 @@
                     function (value) {
                         $('#category').append($('<option>', {
                             value: value[0],
-                            text: value[0] + value[1] ? ` (${value[1]})` : ''
+                            text: value[0] + (value[1] ? ` (${value[1]})` : '')
                         }))
                     }
                 )
