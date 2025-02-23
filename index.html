@@ -36,12 +36,48 @@
         </div>
         <button type="submit" id="submit" disabled="disabled" class="btn btn-success">Додати витрату</button>
     </form>
+
+    <div class="container mt-5">
+        <table id="expenseTable" class="table table-bordered table-striped">
+            <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Категорія</th>
+                <th>Сума</th>
+                <th>Опис</th>
+            </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <div class="container mt-5">
+        <table id="statsTable" class="table table-bordered table-striped">
+            <tbody>
+            <tr>
+                <td>Витрати за поточний місяць (від 10 до 10)</td>
+                <td id="minusCurrent">0</td>
+            </tr>
+            <tr>
+                <td>Витрати за минулий місяць</td>
+                <td id="minusPrevious">0</td>
+            </tr>
+            <tr>
+                <td>Накопичення за поточний місяць</td>
+                <td id="plusCurrent">0</td>
+            </tr>
+            <tr>
+                <td>Накопичення за минулий місяць</td>
+                <td id="plusPrevious">0</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <script>
+    const spreadsheetId = "1A1EtlvFH73vBzAPeSpISqs9I9nE4qEI_8fS-ydnK590"; // Замініть на ваш Spreadsheet ID
     let tokenClient;
     let accessToken = null;
-    const spreadsheetId = "1A1EtlvFH73vBzAPeSpISqs9I9nE4qEI_8fS-ydnK590"; // Замініть на ваш Spreadsheet ID
 
     function init() {
         beforeInitToken();
@@ -49,22 +85,22 @@
     }
 
     function beforeInitToken() {
-        // $( "#date" ).datepicker();
         document.getElementById('date').value = new Date().toISOString().split('T')[0];
     }
 
     function afterInitToken() {
         getCategories();
         enableForm();
+        addLastExpenses();
+        getStats();
     }
 
     function enableForm() {
         document.getElementById('submit').disabled = false;
     }
 
-
     function getCategories() {
-        const range = "service!A2:B"; // Діапазон, де розташовано категорії (стовпець A)
+        const range = "service!A2:C"; // Діапазон, де розташовано категорії (стовпець A)
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
 
         fetch(url, {
@@ -76,10 +112,60 @@
         })
             .then(response => response.json())
             .then(data => {
-                let categories = data.values.map((value) => $('#category').append($('<option>', {
-                    value: value[0],
-                    text: `${value[0]} (${value[1]})`
-                })))
+                let categories = data.values.map(
+                    function (value) {
+                        $('#category').append($('<option>', {
+                            value: value[0],
+                            text: value[0] + value[1] ? ` (${value[1]})` : ''
+                        }))
+                    }
+                )
+            });
+    }
+
+    function addLastExpenses() {
+        const range = "service!E2:H"; // Діапазон, де розташовано категорії (стовпець A)
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+
+        fetch(url, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${accessToken}`,
+                "Accept": "application/json",
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                data.values.map(
+                    function (value) {
+                        $('#expenseTable tbody').append(`<tr>
+                        <td>${value[0]}</td>
+                        <td>${value[1]}</td>
+                        <td>${value[2]}</td>
+                        <td>${value[3] || ''}</td>
+                      </tr>`);
+                    }
+                )
+            });
+    }
+
+    function getStats() {
+        const range = "service!N:N";
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+
+        fetch(url, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${accessToken}`,
+                "Accept": "application/json",
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('minusCurrent').textContent = data.values[0];
+                document.getElementById('minusPrevious').textContent = data.values[1];
+                document.getElementById('plusCurrent').textContent = data.values[2];
+                document.getElementById('plusPrevious').textContent = data.values[3];
             });
     }
 
@@ -120,7 +206,7 @@
         const description = document.getElementById('description').value;
         const date = document.getElementById('date').value;
 
-        const range = "Sheet1!A1"; // Діапазон, куди додаватимуться дані
+        const range = "budget!A1"; // Діапазон, куди додаватимуться дані
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`;
 
         const payload = {
@@ -141,8 +227,8 @@
         })
             .then(response => response.json())
             .then(data => {
-                console.log("Дані успішно додано:", data);
-                document.getElementById('expenseForm').reset();
+                alert('Успішно додано');
+                window.location.reload();
             })
             .catch(error => console.error("Помилка при відправці даних:", error));
     });
