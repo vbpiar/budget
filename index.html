@@ -11,20 +11,15 @@
 </head>
 <body>
 <div class="container">
-    <button id="signinButton" class="btn btn-primary mb-3">Увійти через Google</button>
     <h1 class="mt-5">Витрати з OAuth</h1>
+    <button id="signinButton" class="btn btn-primary mb-3">Увійти через Google</button>
     <!-- Кнопка для входу через Google -->
-    <h2>USD Sale <span class="usd">0</span></h2>
     <!-- Форма для витрат -->
     <form id="expenseForm" class="mt-3">
         <div class="form-group">
             <label for="category">Категорія</label>
             <select class="form-control" id="category" required>
                 <option value="" disabled selected>Виберіть категорію</option>
-                <option value="food">Їжа</option>
-                <option value="transport">Транспорт</option>
-                <option value="utilities">Комунальні послуги</option>
-                <option value="other">Інше</option>
             </select>
         </div>
         <div class="form-group">
@@ -35,7 +30,11 @@
             <label for="description">Опис (опціонально)</label>
             <input type="text" class="form-control" id="description" placeholder="Введіть опис">
         </div>
-        <button type="submit" class="btn btn-success">Додати витрату</button>
+        <div class="form-group">
+            <label for="date">Дата</label>
+            <input type="date" class="form-control" id="date">
+        </div>
+        <button type="submit" id="submit" disabled="disabled" class="btn btn-success">Додати витрату</button>
     </form>
 </div>
 
@@ -44,13 +43,25 @@
     let accessToken = null;
     const spreadsheetId = "1A1EtlvFH73vBzAPeSpISqs9I9nE4qEI_8fS-ydnK590"; // Замініть на ваш Spreadsheet ID
 
+
+
     function init() {
-        // initUsdExchange();
+        beforeInitToken();
         initTokenClient();
+    }
+
+    function beforeInitToken(){
+        // $( "#date" ).datepicker();
+        document.getElementById('date').value = new Date().toISOString().split('T')[0];
     }
 
     function afterInitToken() {
         getCategories();
+        enableForm();
+    }
+
+    function enableForm(){
+        document.getElementById('submit').disabled = false;
     }
 
 
@@ -63,13 +74,14 @@
             headers: {
                 "Authorization": `Bearer ${accessToken}`,
                 "Accept": "application/json",
-                "Content-Type": "application/json"
             },
-            body: JSON.stringify(payload)
         })
             .then(response => response.json())
             .then(data => {
-                console.log(data);
+                let categories = data.values.map((value) => $('#category').append($('<option>', {
+                    value: value[0],
+                    text: value[0]
+                })))
             });
     }
 
@@ -85,10 +97,9 @@
                 }
                 accessToken = tokenResponse.access_token;
                 console.log("Access token отримано:", accessToken);
+                afterInitToken();
             }
         });
-
-        afterInitToken();
     }
 
     // Запит на отримання access token при натисканні кнопки входу
@@ -110,13 +121,14 @@
         const category = document.getElementById('category').value;
         const amount = document.getElementById('amount').value;
         const description = document.getElementById('description').value;
+        const date = document.getElementById('date').value;
 
         const range = "Sheet1!A1"; // Діапазон, куди додаватимуться дані
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`;
 
         const payload = {
             values: [
-                [category, amount, description]
+                [date, category, amount, description]
             ]
         };
 
