@@ -174,7 +174,6 @@
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: '551968388448-vsrf5u183f41cpsa0e6mvsd7esmcdg7j.apps.googleusercontent.com',
             scope: 'https://www.googleapis.com/auth/spreadsheets',
-            prompt: 'none',
             callback: (tokenResponse) => {
                 if (tokenResponse.error) {
                     console.error("Помилка авторизації:", tokenResponse);
