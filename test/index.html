@@ -48,10 +48,7 @@
             client_id: "551968388448-vsrf5u183f41cpsa0e6mvsd7esmcdg7j.apps.googleusercontent.com",
             scope: "https://www.googleapis.com/auth/spreadsheets",
             callback: (tokenResponse)=>{
-                if(tokenResponse.error){
-                    console.error("Помилка авторизації:", tokenResponse);
-                    return;
-                }
+                if(tokenResponse.error){ console.error("Помилка авторизації:", tokenResponse); return; }
                 accessToken = tokenResponse.access_token;
                 afterInitToken();
             }
@@ -62,14 +59,11 @@
         $("#submit").prop("disabled", false);
     }
     function getWishlist(){
-        const range = "wishlist!A2:C";
+        const range = "wishlist!A2:D";
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
         fetch(url,{
             method:"GET",
-            headers: {
-                "Authorization": `Bearer ${accessToken}`,
-                "Accept": "application/json"
-            }
+            headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" }
         }).then(r=>r.json()).then(d=>{
             if(d.values){
                 d.values.forEach(v=>{
@@ -80,39 +74,45 @@
           <td><button class="doneBtn btn btn-sm btn-outline-success">Виконано</button></td>
         </tr>`);
                 });
-                $("#wishlistTable tbody").sortable();
+                $("#wishlistTable tbody").sortable({ update: updateOrder });
             }
         });
+    }
+    function updateOrder(){
+        let orderValues = [];
+        $("#wishlistTable tbody tr").each(function(index){
+            orderValues.push(index+1);
+        });
+        const range = "wishlist!D2:D";
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
+        const payload = { values: [orderValues] };
+        fetch(url,{
+            method:"PUT",
+            headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        }).then(r=>r.json()).then(data=>{ console.log("Order updated", data); });
     }
     function addWishlistItem(name, price){
         let date = new Date().toISOString().split("T")[0],
             range = "wishlist!A1",
             url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
-            payload = { values: [[name, price, date]] };
+            payload = { values: [[name, price, date, ""]] };
         fetch(url,{
             method:"POST",
-            headers:{
-                "Authorization": `Bearer ${accessToken}`,
-                "Accept": "application/json",
-                "Content-Type": "application/json"
-            },
+            headers:{ "Authorization": `Bearer ${accessToken}`, "Accept": "application/json", "Content-Type": "application/json" },
             body: JSON.stringify(payload)
-        }).then(r=>r.json()).then(()=>{location.reload();});
+        }).then(r=>r.json()).then(()=>{ location.reload(); });
     }
     function markItemDone(name, dateAdded){
         let doneDate = new Date().toISOString().split("T")[0],
-            range = "done!A1",
+            range = "wishlist!F2",
             url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
             payload = { values: [[name, "", dateAdded, doneDate]] };
         fetch(url,{
             method:"POST",
-            headers:{
-                "Authorization": `Bearer ${accessToken}`,
-                "Accept": "application/json",
-                "Content-Type": "application/json"
-            },
+            headers:{ "Authorization": `Bearer ${accessToken}`, "Accept": "application/json", "Content-Type": "application/json" },
             body: JSON.stringify(payload)
-        }).then(r=>r.json()).then(()=>{deleteWishlistItem(name, dateAdded);});
+        }).then(r=>r.json()).then(()=>{ deleteWishlistItem(name, dateAdded); });
     }
     function deleteWishlistItem(name, dateAdded){
         location.reload();
