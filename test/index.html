@@ -4,17 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Wishlist</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css" rel="stylesheet">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
 </head>
 <body>
 <div class="container">
     <h1 class="mt-5">Wishlist</h1>
     <button id="signinButton" class="btn btn-primary mb-3">Увійти через Google</button>
-    <form id="wishlistForm" class="mb-3">
+    <form id="wishlistForm" class="mt-3">
         <div class="form-group">
             <label for="itemName">Назва</label>
             <input type="text" class="form-control" id="itemName" placeholder="Введіть назву" required>
@@ -23,9 +23,9 @@
             <label for="itemPrice">Ціна $</label>
             <input type="number" step="0.01" class="form-control" id="itemPrice" placeholder="Введіть ціну" required>
         </div>
-        <button type="submit" class="btn btn-success">Додати</button>
+        <button type="submit" id="submit" disabled="disabled" class="btn btn-success">Додати</button>
     </form>
-    <table id="wishlistTable" class="table table-bordered table-striped">
+    <table id="wishlistTable" class="table table-bordered table-striped mt-5">
         <thead>
         <tr>
             <th>Назва</th>
@@ -39,138 +39,99 @@
 </div>
 <script>
     const spreadsheetId = "1A1EtlvFH73vBzAPeSpISqs9I9nE4qEI_8fS-ydnK590";
-    let codeClient, accessToken = null, refreshToken = null;
-    function init() {
-        initCodeClient();
-        let t = getToken();
-        if (t && t.token) {
-            accessToken = t.token;
-            refreshToken = t.refreshToken;
-            afterInitToken();
-        } else {
-            requestAuthCode();
-        }
+    let tokenClient, accessToken = null;
+    function init(){
+        initTokenClient();
     }
-    function initCodeClient() {
-        codeClient = google.accounts.oauth2.initCodeClient({
+    function initTokenClient(){
+        tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: "551968388448-vsrf5u183f41cpsa0e6mvsd7esmcdg7j.apps.googleusercontent.com",
             scope: "https://www.googleapis.com/auth/spreadsheets",
-            ux_mode: "popup",
-            redirect_uri: "postmessage",
-            callback: (r) => { if (r.code) { exchangeAuthCode(r.code); } }
+            callback: (tokenResponse)=>{
+                if(tokenResponse.error){
+                    console.error("Помилка авторизації:", tokenResponse);
+                    return;
+                }
+                accessToken = tokenResponse.access_token;
+                afterInitToken();
+            }
         });
     }
-    function requestAuthCode() { codeClient.requestCode(); }
-    function exchangeAuthCode(code) {
-        fetch("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-                code: code,
-                client_id: "551968388448-vsrf5u183f41cpsa0e6mvsd7esmcdg7j.apps.googleusercontent.com",
-                client_secret: "YOUR_CLIENT_SECRET",
-                redirect_uri: "postmessage",
-                grant_type: "authorization_code"
-            })
-        }).then(r => r.json()).then(d => {
-            accessToken = d.access_token;
-            refreshToken = d.refresh_token;
-            let exp = Date.now() + d.expires_in * 1000;
-            storeToken(accessToken, refreshToken, exp);
-            afterInitToken();
-        });
+    function afterInitToken(){
+        getWishlist();
+        $("#submit").prop("disabled", false);
     }
-    function refreshAccessToken() {
-        let t = getToken();
-        if (t && t.refreshToken) {
-            fetch("https://oauth2.googleapis.com/token", {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: new URLSearchParams({
-                    client_id: "551968388448-vsrf5u183f41cpsa0e6mvsd7esmcdg7j.apps.googleusercontent.com",
-                    client_secret: "YOUR_CLIENT_SECRET",
-                    refresh_token: t.refreshToken,
-                    grant_type: "refresh_token"
-                })
-            }).then(r => r.json()).then(d => {
-                accessToken = d.access_token;
-                let exp = Date.now() + d.expires_in * 1000;
-                storeToken(accessToken, t.refreshToken, exp);
-            });
-        }
-    }
-    function storeToken(token, rt, exp) {
-        localStorage.setItem("authToken", JSON.stringify({ token: token, refreshToken: rt, expiry: exp }));
-    }
-    function getToken() {
-        const raw = localStorage.getItem("authToken");
-        if (!raw) return null;
-        let data = JSON.parse(raw);
-        if (Date.now() > data.expiry) { localStorage.removeItem("authToken"); return null; }
-        return data;
-    }
-    function afterInitToken() { getWishlist(); enableForm(); }
-    function enableForm() { $("#wishlistForm button[type=submit]").prop("disabled", false); }
-    function getWishlist() {
+    function getWishlist(){
         const range = "wishlist!A2:C";
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
-        fetch(url, {
-            method: "GET",
-            headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" }
-        }).then(r => r.json()).then(d => {
-            if (d.values) {
-                d.values.forEach(v => {
-                    let row = `<tr data-date="${v[2]}">
+        fetch(url,{
+            method:"GET",
+            headers: {
+                "Authorization": `Bearer ${accessToken}`,
+                "Accept": "application/json"
+            }
+        }).then(r=>r.json()).then(d=>{
+            if(d.values){
+                d.values.forEach(v=>{
+                    $("#wishlistTable tbody").append(`<tr data-name="${v[0]}" data-date="${v[2]}">
           <td>${v[0]}</td>
           <td>${v[1]}</td>
           <td>${v[2]}</td>
           <td><button class="doneBtn btn btn-sm btn-outline-success">Виконано</button></td>
-        </tr>`;
-                    $("#wishlistTable tbody").append(row);
+        </tr>`);
                 });
                 $("#wishlistTable tbody").sortable();
             }
         });
     }
-    function addWishlistItem(name, price) {
+    function addWishlistItem(name, price){
         let date = new Date().toISOString().split("T")[0],
             range = "wishlist!A1",
             url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
             payload = { values: [[name, price, date]] };
-        fetch(url, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json", "Content-Type": "application/json" },
+        fetch(url,{
+            method:"POST",
+            headers:{
+                "Authorization": `Bearer ${accessToken}`,
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
             body: JSON.stringify(payload)
-        }).then(r => r.json()).then(d => { location.reload(); });
+        }).then(r=>r.json()).then(()=>{location.reload();});
     }
-    function markItemDone(rowElem) {
-        let name = $(rowElem).find("td:eq(0)").text(),
-            price = $(rowElem).find("td:eq(1)").text(),
-            dateAdded = $(rowElem).find("td:eq(2)").text(),
-            doneDate = new Date().toISOString().split("T")[0],
+    function markItemDone(name, dateAdded){
+        let doneDate = new Date().toISOString().split("T")[0],
             range = "done!A1",
             url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
-            payload = { values: [[name, price, dateAdded, doneDate]] };
-        fetch(url, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json", "Content-Type": "application/json" },
+            payload = { values: [[name, "", dateAdded, doneDate]] };
+        fetch(url,{
+            method:"POST",
+            headers:{
+                "Authorization": `Bearer ${accessToken}`,
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
             body: JSON.stringify(payload)
-        }).then(r => r.json()).then(d => { deleteWishlistItem(name, dateAdded); });
+        }).then(r=>r.json()).then(()=>{deleteWishlistItem(name, dateAdded);});
     }
-    function deleteWishlistItem(name, dateAdded) {
-        // Placeholder: deletion via batchUpdate requires additional implementation.
+    function deleteWishlistItem(name, dateAdded){
         location.reload();
     }
-    $("#wishlistForm").on("submit", function(e) {
+    document.getElementById("signinButton").addEventListener("click", ()=>{
+        if(tokenClient){ tokenClient.requestAccessToken(); }
+    });
+    document.getElementById("wishlistForm").addEventListener("submit", function(e){
         e.preventDefault();
-        let name = $("#itemName").val(), price = $("#itemPrice").val();
+        let name = document.getElementById("itemName").value,
+            price = document.getElementById("itemPrice").value;
         addWishlistItem(name, price);
     });
-    $(document).on("click", ".doneBtn", function() {
-        let row = $(this).closest("tr");
-        markItemDone(row);
+    $(document).on("click", ".doneBtn", function(){
+        let row = $(this).closest("tr"),
+            name = row.find("td:eq(0)").text(),
+            dateAdded = row.find("td:eq(2)").text();
+        markItemDone(name, dateAdded);
     });
-    document.getElementById("signinButton").addEventListener("click", () => { requestAuthCode(); });
     window.onload = init;
 </script>
 <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
