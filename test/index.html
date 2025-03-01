@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Витрати</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<div class="container">
+    <h1 class="mt-5">Витрати</h1>
+    <button id="signinButton" class="btn btn-primary mb-3">Увійти через Google</button>
+    <form id="expenseForm" class="mt-3">
+        <div class="form-group">
+            <label for="category">Категорія</label>
+            <select class="form-control" id="category" required>
+                <option value="" disabled selected>Виберіть категорію</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="amount">Сума $</label>
+            <input type="number" step="0.01" class="form-control" id="amount" placeholder="Введіть суму" required>
+        </div>
+        <div class="form-group">
+            <label for="description">Опис</label>
+            <input type="text" class="form-control" id="description" placeholder="Введіть опис">
+        </div>
+        <div class="form-group">
+            <label for="date">Дата</label>
+            <input type="date" class="form-control" id="date">
+        </div>
+        <button type="submit" id="submit" disabled="disabled" class="btn btn-success">Додати витрату</button>
+    </form>
+    <div class="container mt-5">
+        <table id="expenseTable" class="table table-bordered table-striped">
+            <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Категорія</th>
+                <th>Сума</th>
+                <th>Опис</th>
+            </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <div class="container mt-5">
+        <table id="statsTable" class="table table-bordered table-striped">
+            <tbody>
+            <tr>
+                <td>Витрати за поточний місяць (від 10 до 10)</td>
+                <td id="minusCurrent">0</td>
+            </tr>
+            <tr>
+                <td>Витрати за минулий місяць</td>
+                <td id="minusPrevious">0</td>
+            </tr>
+            <tr>
+                <td>Накопичення за поточний місяць</td>
+                <td id="plusCurrent">0</td>
+            </tr>
+            <tr>
+                <td>Накопичення за минулий місяць</td>
+                <td id="plusPrevious">0</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+<script>
+    const spreadsheetId = "1A1EtlvFH73vBzAPeSpISqs9I9nE4qEI_8fS-ydnK590";
+    let codeClient, accessToken = null, refreshToken = null;
+
+    function init() {
+        setDate();
+        initCodeClient();
+        let t = getToken();
+        if (t && t.token) {
+            accessToken = t.token;
+            refreshToken = t.refreshToken;
+            afterInitToken()
+        } else {
+            requestAuthCode()
+        }
+    }
+
+    function setDate() {
+        document.getElementById("date").value = new Date().toISOString().split("T")[0]
+    }
+
+    function initCodeClient() {
+        codeClient = google.accounts.oauth2.initCodeClient({
+            client_id: "551968388448-vsrf5u183f41cpsa0e6mvsd7esmcdg7j.apps.googleusercontent.com",
+            scope: "https://www.googleapis.com/auth/spreadsheets",
+            ux_mode: "popup",
+            redirect_uri: "postmessage",
+            callback: (r) => {
+                if (r.code) {
+                    exchangeAuthCode(r.code)
+                }
+            }
+        })
+    }
+
+    function requestAuthCode() {
+        codeClient.requestCode()
+    }
+
+    function exchangeAuthCode(code) {
+        fetch("https://oauth2.googleapis.com/token", {
+            method: "POST",
+            headers: {"Content-Type": "application/x-www-form-urlencoded"},
+            body: new URLSearchParams({
+                code: code,
+                client_id: "551968388448-vsrf5u183f41cpsa0e6mvsd7esmcdg7j.apps.googleusercontent.com",
+                client_secret: "YOUR_CLIENT_SECRET",
+                redirect_uri: "postmessage",
+                grant_type: "authorization_code"
+            })
+        }).then(r => r.json()).then(d => {
+            accessToken = d.access_token;
+            refreshToken = d.refresh_token;
+            let exp = Date.now() + d.expires_in * 1000;
+            storeToken(accessToken, refreshToken, exp);
+            afterInitToken()
+        })
+    }
+
+    function refreshAccessToken() {
+        let t = getToken();
+        if (t && t.refreshToken) {
+            fetch("https://oauth2.googleapis.com/token", {
+                method: "POST",
+                headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                body: new URLSearchParams({
+                    client_id: "551968388448-vsrf5u183f41cpsa0e6mvsd7esmcdg7j.apps.googleusercontent.com",
+                    client_secret: "YOUR_CLIENT_SECRET",
+                    refresh_token: t.refreshToken,
+                    grant_type: "refresh_token"
+                })
+            }).then(r => r.json()).then(d => {
+                accessToken = d.access_token;
+                let exp = Date.now() + d.expires_in * 1000;
+                storeToken(accessToken, t.refreshToken, exp)
+            })
+        }
+    }
+
+    function storeToken(token, rt, exp) {
+        localStorage.setItem("authToken", JSON.stringify({token: token, refreshToken: rt, expiry: exp}))
+    }
+
+    function getToken() {
+        const raw = localStorage.getItem("authToken");
+        if (!raw) return null;
+        let data = JSON.parse(raw);
+        if (Date.now() > data.expiry) {
+            localStorage.removeItem("authToken");
+            return null
+        }
+        return data
+    }
+
+    function afterInitToken() {
+        getCategories();
+        enableForm();
+        addLastExpenses();
+        getStats()
+    }
+
+    function enableForm() {
+        document.getElementById("submit").disabled = false
+    }
+
+    function getCategories() {
+        const range = "service!A2:C",
+            url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+        fetch(url, {
+            method: "GET",
+            headers: {"Authorization": `Bearer ${accessToken}`, "Accept": "application/json"}
+        }).then(r => r.json()).then(d => {
+            d.values.forEach(v => {
+                $("#category").append($("<option>", {value: v[0], text: v[0] + (v[1] ? ` (${v[1]})` : "")}))
+            })
+        })
+    }
+
+    function addLastExpenses() {
+        const range = "service!E2:H",
+            url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+        fetch(url, {
+            method: "GET",
+            headers: {"Authorization": `Bearer ${accessToken}`, "Accept": "application/json"}
+        }).then(r => r.json()).then(d => {
+            d.values.forEach(v => {
+                $("#expenseTable tbody").append(`<tr>
+<td>${v[0]}</td>
+<td>${v[1]}</td>
+<td>${v[2]}</td>
+<td>${v[3] || ""}</td>
+</tr>`)
+            })
+        })
+    }
+
+    function getStats() {
+        const range = "service!N:N",
+            url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+        fetch(url, {
+            method: "GET",
+            headers: {"Authorization": `Bearer ${accessToken}`, "Accept": "application/json"}
+        }).then(r => r.json()).then(d => {
+            document.getElementById("minusCurrent").textContent = d.values[0];
+            document.getElementById("minusPrevious").textContent = d.values[1];
+            document.getElementById("plusCurrent").textContent = d.values[2];
+            document.getElementById("plusPrevious").textContent = d.values[3]
+        })
+    }
+
+    document.getElementById("signinButton").addEventListener("click", () => {
+        requestAuthCode()
+    });
+    document.getElementById("expenseForm").addEventListener("submit", e => {
+        e.preventDefault();
+        if (!accessToken) {
+            alert("Увійдіть через Google.");
+            return
+        }
+        const category = document.getElementById("category").value, amount = document.getElementById("amount").value,
+            description = document.getElementById("description").value, date = document.getElementById("date").value,
+            range = "budget!A1",
+            url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
+            payload = {values: [[date, category, amount, description]]};
+        fetch(url, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${accessToken}`,
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        }).then(r => r.json()).then(d => {
+            alert("Успішно додано");
+            window.location.reload()
+        }).catch(err => console.error("Помилка:", err))
+    });
+    window.onload = init;
+</script>
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
