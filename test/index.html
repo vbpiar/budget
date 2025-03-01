@@ -78,19 +78,30 @@
             }
         });
     }
-    function updateOrder(){
+    function updateOrder() {
         let orderValues = [];
-        $("#wishlistTable tbody tr").each(function(index){
-            orderValues.push(index+1);
+        $("#wishlistTable tbody tr").each(function(index) {
+            // index+1 - це число, яке хочете записати в колонку
+            // Кожне число має бути окремим масивом
+            orderValues.push([index + 1]);
         });
         const range = "wishlist!D2:D";
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
-        const payload = { values: [orderValues] };
-        fetch(url,{
-            method:"PUT",
-            headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        // Передаємо кожен елемент як окремий масив
+        const payload = { values: orderValues };
+
+        fetch(url, {
+            method: "PUT",
+            headers: {
+                "Authorization": `Bearer ${accessToken}`,
+                "Content-Type": "application/json"
+            },
             body: JSON.stringify(payload)
-        }).then(r=>r.json()).then(data=>{ console.log("Order updated", data); });
+        })
+            .then(r => r.json())
+            .then(data => {
+                console.log("Order updated", data);
+            });
     }
     function addWishlistItem(name, price){
         let date = new Date().toISOString().split("T")[0],
